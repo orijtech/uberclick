@@ -1,0 +1,184 @@
+    <div id="order-container" style="width:100%;height:100%">
+      <style>
+	#uber-map {
+	  height: 80%;
+	  width: 80%;
+	  margin-left: 10%;
+	  margin-right: 10%;
+	}
+
+	.uber-one-click: {
+	  background-image: url(/assets/uber_rides_api_icon.svg);
+	}
+      </style>
+
+      <div id='start'>
+	<input id='start-input' class='uber-search-inputs' type='text' placeholder='Start'>
+      </div>
+      <br />
+      <div id='end'>
+	<input id='end-input' class='uber-search-inputs' type='text' placeholder='End'>
+      </div>
+
+      <div id="uber-map"></div>
+    </div>
+
+    <script>
+      var map, infoWindow;
+      var points = {start: null, end: null};
+      var lineSymbol = {};
+
+      function initMap() {
+	
+	infoWindow = new google.maps.InfoWindow;
+
+	// Now for geolocation
+	if (!navigator.geolocation) {
+	  map = new google.maps.Map(document.getElementById('uber-map'), {
+	    center: {lat: -34.397, lng: 150.644},
+	    zoom: 8
+	  });
+	  handleLocationError(false, infoWindow, map.getCenter());
+	  initAutocomplete();
+	} else {
+	  navigator.geolocation.getCurrentPosition(function(position) {
+	    var pos = {
+	      lat: position.coords.latitude,
+	      lng: position.coords.longitude,
+	    };
+	    
+	    map = new google.maps.Map(document.getElementById('uber-map'), {
+	      center: pos,
+	      zoom: 8
+	    });
+
+	    // infoWindow.setPosition(pos);
+	    // infoWindow.setContent('Your current location');
+	    // infoWindow.open(map);
+	    points['start'] = pos;
+
+	    var icon = {
+	      url: './assets/Pin.png',
+	      size: new google.maps.Size(70, 70),
+	      origin: new google.maps.Point(0, 0),
+	      anchor: new google.maps.Point(17, 34),
+	      scaledSize: new google.maps.Size(25, 25),
+	    };
+	    
+	    var startMarker = new google.maps.Marker({
+		map: map,
+		icon: icon,
+		title: 'Start',
+		position: pos,
+	    })
+
+	    map.setCenter(pos);
+	    initAutocomplete();
+	  }, function() {
+	    map = new google.maps.Map(document.getElementById('uber-map'), {
+	      center: {lat: -34.397, lng: 150.644},
+	      zoom: 8
+	    });
+	    handleLocationError(true, infoWindow, map.getCenter());
+	    initAutocomplete();
+	  });
+	}
+      }
+
+      function redrawPointsPath() {
+	for (var key in points) {
+	  // If any is null don't draw the line
+	  if (!points[key])
+	    return;
+	}
+
+	var line = new google.maps.Polyline({
+	  path: [points.start, points.end],
+	  icons: [{
+	    icon: lineSymbol,
+	    offset: '100%',
+	  }],
+	  map: map,
+	});
+      }
+
+      function translateIndexToName(i) {
+	if (i <= 0)
+	  return 'start';
+	return 'end';
+      }
+
+      function initAutocomplete() {
+	var lineSymbol = {
+	  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+	  scale: 8,
+	  strokeColor: '#493',
+	};
+
+	var searchElements = document.getElementsByClassName('uber-search-inputs') || [];
+	for (var i=0; i < searchElements.length; i++) {
+	  var el = searchElements[i];
+	  var searchBox = new google.maps.places.SearchBox(el);
+
+	  searchBox.posName = translateIndexToName(i);
+	  searchBox.markers = [];
+	  searchBox.addListener('places_changed', function() {
+	    var places = this.getPlaces();
+	    if (places.length === 0)
+	      return;
+
+	    var markers = this.markers || [];
+	    // Clear out old markers
+	    markers.forEach(function(marker) {
+	      marker.setMap(null);
+	    });
+	    markers = [];
+
+	    var posName = this.posName;
+	    var bounds = new google.maps.LatLngBounds();
+	    places.forEach(function(place) {
+	      if (!place.geometry) {
+		return;
+	      }
+
+	      var icon = {
+		url: './assets/Pin.png',
+		size: new google.maps.Size(70, 70),
+		origin: new google.maps.Point(0, 0),
+		anchor: new google.maps.Point(17, 34),
+		scaledSize: new google.maps.Size(25, 25),
+	      };
+
+	      markers.push(new google.maps.Marker({
+		map: map,
+		icon: icon,
+		title: place.name,
+		position: place.geometry.location,
+	      }));
+
+	      if (place.geometry.viewport) {
+		bounds.union(place.geometry.viewport);
+	      } else {
+		bounds.extend(place.geometry.location);
+	      }
+
+	      points[posName] = place.geometry.location;
+	      console.log(posName);
+	      redrawPointsPath();
+	    });
+
+	    this.markers = markers;
+	    map.fitBounds(bounds);
+	  });
+	}
+      }
+
+      function handleLocationError(allowsGeoLocation, infoWindow, pos) {
+	infoWindow.setPosition(pos);
+	infoWindow.setContent(allowsGeoLocation ?
+		      'Geolocation failed' :
+		      'Your browser does not support geolocation');
+	infoWindow.open(map);
+      }
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCPNOYk3Fm1XtndKmdqc8uj0zWAV-joZs&callback=initMap&libraries=places" async defer></script>
