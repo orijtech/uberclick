@@ -1,35 +1,90 @@
     <div id="order-container" style="width:100%;height:100%">
       <style>
 	#uber-map {
-	  height: 80%;
-	  width: 80%;
-	  margin-left: 10%;
-	  margin-right: 10%;
+	  height: 90%;
+	  width: 100%;
+	  margin-bottom: 10%;
 	}
 
-	.uber-one-click: {
-	  background-image: url(/assets/uber_rides_api_icon.svg);
+	uber-search-inputs {
+	  z-index: -1; position: relative;
+	}
+
+	#search-inputs {
+	  position: fixed;
+	  left: 10;
+	  top: 20vh;
+	  border: 2%;
 	}
       </style>
 
-      <div id='start'>
-	<input id='start-input' class='uber-search-inputs' type='text' placeholder='Start'>
+      <div id="uber-map"></div>
+      <div id="search-inputs">
+      <div id="start-div">
+	<input id="start" class="uber-search-inputs" type="text" placeholder="Start">
       </div>
       <br />
-      <div id='end'>
-	<input id='end-input' class='uber-search-inputs' type='text' placeholder='End'>
+      <div id="end-div">
+	<input id="end" class="uber-search-inputs" type="text" placeholder="End">
       </div>
-
-      <div id="uber-map"></div>
+      <div id="uber-options"></div>
+    </div>
     </div>
 
     <script>
-      var map, infoWindow;
-      var points = {start: null, end: null};
-      var lineSymbol = {};
+      function getEstimate(points) {
+	if (!(points && points.start && points.end)) {
+	  console.log('expecting start and end to have been set');
+	  return;
+	}
+
+	var optionsUL = document.getElementById('uber-options');
+	optionsUL.innerHTML = '';
+
+	var req = new XMLHttpRequest();
+	req.onreadystatechange = function() {
+	  var state = this;
+	  if (state.readyState === 4) {
+	    if (state.status >= 200 && state.status <= 299) {
+	      var estimates = JSON.parse(state.responseText);
+	      if (!(estimates && estimates.length > 0))
+		return;
+
+	      estimates.forEach(function(estimate) {
+		var divEl = document.createElement('div');
+		divEl.setAttribute('data-id', estimate.product_id);
+		divEl.onclick	= function() { alert(' product id ' + estimate.product_id ) };
+		var listing = [estimate.display_name, estimate.estimate];
+		if (estimate.currency_code !== '')
+		  listing.push(estimate.currency_code);
+
+		divEl.innerHTML = '<button style="width:100%">' + listing.join(' ') + '</button>';
+		optionsUL.append(divEl);
+	      });
+	    } else {
+	      alert('failed to parse data ' + state.responseText + ' state ' + state.readyState);
+	    }
+	  }
+	};
+
+	req.open('POST', 'http://localhost:9899/estimate-price', true);
+	req.setRequestHeader('Content-Type', 'application/json');
+	
+	var data = {
+	  start_latitude:   points.start.lat(),
+	  start_longitude:  points.start.lng(),
+	  end_latitude:	    points.end.lat(),
+	  end_longitude:    points.end.lng(),
+	};
+	req.send(JSON.stringify(data));
+      }
+    </script>
+
+    <script>
+      var map, infoWindow, directionsService ;
+      var markerArray = [];
 
       function initMap() {
-	
 	infoWindow = new google.maps.InfoWindow;
 
 	// Now for geolocation
@@ -39,7 +94,7 @@
 	    zoom: 8
 	  });
 	  handleLocationError(false, infoWindow, map.getCenter());
-	  initAutocomplete();
+	  initAutoCompleteAndListener();
 	} else {
 	  navigator.geolocation.getCurrentPosition(function(position) {
 	    var pos = {
@@ -51,126 +106,78 @@
 	      center: pos,
 	      zoom: 8
 	    });
-
-	    // infoWindow.setPosition(pos);
-	    // infoWindow.setContent('Your current location');
-	    // infoWindow.open(map);
-	    points['start'] = pos;
-
-	    var icon = {
-	      url: './assets/Pin.png',
-	      size: new google.maps.Size(70, 70),
-	      origin: new google.maps.Point(0, 0),
-	      anchor: new google.maps.Point(17, 34),
-	      scaledSize: new google.maps.Size(25, 25),
-	    };
-	    
-	    var startMarker = new google.maps.Marker({
-		map: map,
-		icon: icon,
-		title: 'Start',
-		position: pos,
-	    })
-
-	    map.setCenter(pos);
-	    initAutocomplete();
+	    initAutoCompleteAndListener();
 	  }, function() {
 	    map = new google.maps.Map(document.getElementById('uber-map'), {
 	      center: {lat: -34.397, lng: 150.644},
 	      zoom: 8
 	    });
 	    handleLocationError(true, infoWindow, map.getCenter());
-	    initAutocomplete();
+	    initAutoCompleteAndListener();
+
 	  });
 	}
-      }
-
-      function redrawPointsPath() {
-	for (var key in points) {
-	  // If any is null don't draw the line
-	  if (!points[key])
-	    return;
-	}
-
-	var line = new google.maps.Polyline({
-	  path: [points.start, points.end],
-	  icons: [{
-	    icon: lineSymbol,
-	    offset: '100%',
-	  }],
-	  map: map,
-	});
       }
 
       function translateIndexToName(i) {
 	if (i <= 0)
-	  return 'start';
-	return 'end';
+	  return "start";
+	return "end";
       }
 
-      function initAutocomplete() {
-	var lineSymbol = {
-	  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-	  scale: 8,
-	  strokeColor: '#493',
+      function calculateAndDisplayRoute(directionsDisplay, directionsService,
+					      markerArray, stepDisplay, map) {
+
+	var origin = document.getElementById("start").value;
+	var destination = document.getElementById("end").value;
+	if (!(origin && destination))
+	  return;
+
+	// First remove any existing markers from the map
+	for (var i=0; i < markerArray.length; i++) {
+	  markerArray[i].setMap(null);
+	}
+
+	// Retrieve the start and end locations and create
+	// a DirectionsRequest using DRIVING directions.
+	directionsService.route({
+	  travelMode:	"DRIVING",
+	  origin:	origin,
+	  destination:	destination,
+	}, function(response, status) {
+	  if (status === "OK") {
+	    directionsDisplay.setDirections(response);
+	    getEstimate(extractPoints(response));
+	  } else {
+	    window.alert("directions failed due to " + status);
+	  }
+	});
+      }
+
+      function extractPoints(directionResult) {
+	var theRoute = directionResult.routes[0].legs[0];
+	var start = theRoute.steps[0].start_location;
+	var end   = theRoute.steps[theRoute.steps.length-1].end_location;
+	return {start: start, end: end};
+      }
+
+      function initAutoCompleteAndListener() {
+	directionsService = new google.maps.DirectionsService;
+	var directionsDisplay = new google.maps.DirectionsRenderer({map: map});
+	var stepDisplay = infoWindow;
+
+	var onChangeHandler = function() {
+	  calculateAndDisplayRoute(directionsDisplay, directionsService, markerArray, stepDisplay, map);
 	};
 
-	var searchElements = document.getElementsByClassName('uber-search-inputs') || [];
-	for (var i=0; i < searchElements.length; i++) {
-	  var el = searchElements[i];
+	var startEl = document.getElementById('start');
+	var endEl   = document.getElementById('end');
+	var elems = [startEl, endEl];
+	elems.forEach(function(el) {
+	  el.addEventListener('change', onChangeHandler);
 	  var searchBox = new google.maps.places.SearchBox(el);
-
-	  searchBox.posName = translateIndexToName(i);
 	  searchBox.markers = [];
-	  searchBox.addListener('places_changed', function() {
-	    var places = this.getPlaces();
-	    if (places.length === 0)
-	      return;
-
-	    var markers = this.markers || [];
-	    // Clear out old markers
-	    markers.forEach(function(marker) {
-	      marker.setMap(null);
-	    });
-	    markers = [];
-
-	    var posName = this.posName;
-	    var bounds = new google.maps.LatLngBounds();
-	    places.forEach(function(place) {
-	      if (!place.geometry) {
-		return;
-	      }
-
-	      var icon = {
-		url: './assets/Pin.png',
-		size: new google.maps.Size(70, 70),
-		origin: new google.maps.Point(0, 0),
-		anchor: new google.maps.Point(17, 34),
-		scaledSize: new google.maps.Size(25, 25),
-	      };
-
-	      markers.push(new google.maps.Marker({
-		map: map,
-		icon: icon,
-		title: place.name,
-		position: place.geometry.location,
-	      }));
-
-	      if (place.geometry.viewport) {
-		bounds.union(place.geometry.viewport);
-	      } else {
-		bounds.extend(place.geometry.location);
-	      }
-
-	      points[posName] = place.geometry.location;
-	      console.log(posName);
-	      redrawPointsPath();
-	    });
-
-	    this.markers = markers;
-	    map.fitBounds(bounds);
-	  });
-	}
+	});
       }
 
       function handleLocationError(allowsGeoLocation, infoWindow, pos) {
@@ -181,4 +188,5 @@
 	infoWindow.open(map);
       }
     </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCPNOYk3Fm1XtndKmdqc8uj0zWAV-joZs&callback=initMap&libraries=places" async defer></script>
+    <!--script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCPNOYk3Fm1XtndKmdqc8uj0zWAV-joZs&callback=initMap&libraries=places" async defer></script-->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDphiB3ttH0TedYITg9h9k7Uog_FY7eOh4&callback=initMap&libraries=places" async defer></script>

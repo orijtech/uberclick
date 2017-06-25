@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -279,6 +281,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
 	http.HandleFunc("/grant", grant)
 	http.HandleFunc("/receive-oauth2", receiveUberAuth)
+	http.HandleFunc("/estimate-price", estimatePrice)
 	http.HandleFunc("/config", func(rw http.ResponseWriter, req *http.Request) {
 		subm, err := uberclick.FparseSubmission(req.Body)
 		if err != nil {
@@ -364,4 +367,43 @@ func main() {
 	if err := http.ListenAndServe(":9899", nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func estimatePrice(rw http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	esReq := new(uber.EstimateRequest)
+	if err := parseAndSet(req.Body, esReq); err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	estimatesPageChan, cancelPaging, err := uberClient.EstimatePrice(esReq)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var allEstimates []*uber.PriceEstimate
+	for page := range estimatesPageChan {
+		if page.Err == nil {
+			allEstimates = append(allEstimates, page.Estimates...)
+		}
+		if len(allEstimates) >= 4 {
+			cancelPaging()
+		}
+	}
+	blob, err := jsonEncodeUnescapedHTML(allEstimates)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rw.Write(blob)
+}
+
+func parseAndSet(r io.Reader, recv interface{}) error {
+	blob, err := ioutil.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(blob, recv)
 }
