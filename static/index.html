@@ -3,25 +3,14 @@
     <meta name="viewport" content-"initial-scale=1.0">
     <meta charset="utf-8">
     <script type="text/javascript" src="/jquery-1.10.2.min.js"></script>
-    
-    <script>
-      function orderUber() {
-	console.log('ordering that Uber');
-	var elem = document.getElementById('order-container');
-	elem.visibility = 'visible';
-      }
-    </script>
   </head>
 
   <body>
-    <br />
-    <br />
-    <br />
-
-    <br />
-
-    <div id="uber-one-click" data-apikey="API-KEY" data-callback="orderUber" />
+    <div id="uber-one-click" data-apikey="8bd5f4dd-85d4-432f-87e8-c98210d70da2" />
     <script type="text/javascript" src="/uberclick.js?key=bonjourne"></script>
+    <script>
+      var uber = new Uber({'itemId': 'uber-one-click'});
+      console.log('Invoked %s', uber);
+    </script>
   </body>
 </HTML>
-
