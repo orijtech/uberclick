@@ -1,0 +1,27 @@
+<HTML>
+  <head>
+    <title>uberclick-sample</title>
+    <meta name="viewport" content-"initial-scale=1.0">
+    <meta charset="utf-8">
+  </head>
+
+  <body>
+    <h1>This is a page with content!</h1>
+    <p>The button on this page is shown below but its left to you to decide where to put it</p>
+
+    <!--The button happens to be placed here-->
+    <div id="uber-one-click" />
+    <script type="text/javascript" src="/uberclick.js?key=nocache"></script>
+    <script>
+      var uber = new Uber({
+	'itemId': 'uber-one-click',
+	'apiKey': '8bd5f4dd-85d4-432f-87e8-c98210d70da2',
+      });
+      console.log('Invoked %s', uber);
+    </script>
+    <!--End of button initialization-->
+
+    <p>More content goes here</p>
+    <p>Vroom vroom!</p>
+  </body>
+</HTML>

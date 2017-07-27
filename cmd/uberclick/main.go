@@ -345,6 +345,7 @@ func main() {
 		})
 	})
 
+	// This route registers acceptable domains
 	mux.HandleFunc("/coruz", func(rw http.ResponseWriter, req *http.Request) {
 		var domains []string
 		if err := parseAndSet(req.Body, &domains); err != nil {
@@ -388,7 +389,7 @@ func main() {
 				return
 			}
 			myProfile, err := uberC.RetrieveMyProfile()
-			log.Printf("myProfile: %#v\n", myProfile)
+			log.Printf("successfully retrieved my profile!")
 			if err != nil {
 				http.Error(rw, err.Error(), http.StatusBadRequest)
 				return
@@ -414,7 +415,9 @@ func main() {
 	})
 
 	if http1 {
-		if err := http.ListenAndServe(":9899", mux); err != nil {
+		addr := ":9899"
+		log.Printf("running on address: %q", addr)
+		if err := http.ListenAndServe(addr, mux); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -521,7 +524,6 @@ tryCheckingDomain:
 			if err = refreshStoreConnection(); err != nil {
 				goto tryCheckingDomain
 			}
-
 		}
 	}
 
@@ -547,7 +549,6 @@ func withAuthToken(rw http.ResponseWriter, req *http.Request, fn func(*oauth2.To
 			rw.WriteHeader(http.StatusPermanentRedirect)
 			return
 		}
-		loginURL = fmt.Sprintf("%s://%s/grant", scheme(req), req.Host)
 		ai := &authInfo{URL: loginURL}
 		blob, _ := jsonEncodeUnescapedHTML(ai)
 		rw.Write(blob)
